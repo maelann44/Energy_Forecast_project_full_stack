@@ -410,3 +410,394 @@ Generer et stocker
 ```
 
 Le dashboard recupere alors les dernieres valeurs historiques, appelle `/predict`, puis insere ou met a jour les lignes dans `predictions`.
+
+## 11. Git et GitHub
+
+Le projet doit etre versionne avec Git et pousse sur GitHub.
+
+Commandes de base :
+
+```powershell
+git init
+git branch -M main
+git add .
+git commit -m "Initial project setup"
+git remote add origin https://github.com/maelann44/Energy_Forecast_project_full_stack.git
+git push -u origin main
+```
+
+Si GitHub contient deja un README ou une licence :
+
+```powershell
+git pull origin main --allow-unrelated-histories
+```
+
+En cas de conflit dans `README.md`, supprimer les marqueurs :
+
+```text
+marqueur de debut de conflit
+separateur entre les deux versions
+marqueur de fin de conflit
+```
+
+puis :
+
+```powershell
+git add README.md
+git commit -m "Resolve README merge conflict"
+git push -u origin main
+```
+
+Verifier que `.env` n'est pas envoye :
+
+```powershell
+git check-ignore -v .env
+git status
+```
+
+## 12. Deploiement low-cost sur VPS
+
+Cette etape remplace le deploiement React + Express par l'architecture reelle du projet :
+
+```text
+Utilisateur
+   |
+   v
+Streamlit Dashboard : port 8501
+   |
+   | lit les donnees
+   v
+PostgreSQL : conteneur prive
+
+Streamlit Dashboard
+   |
+   | appelle /predict
+   v
+FastAPI + Chronos : port 8000
+```
+
+Le deploiement utilise Docker Compose pour garder le serveur simple :
+
+- `postgres` : base de donnees PostgreSQL ;
+- `fastapi` : API de prediction Chronos ;
+- `streamlit` : dashboard web ;
+- `worker` : service utilise ponctuellement par cron pour lancer les scripts.
+
+### Choix economique du VPS
+
+Pour reduire le prix, choisir un VPS Ubuntu avec au minimum :
+
+- 2 vCPU ;
+- 4 Go RAM ;
+- 40 Go disque ;
+- Ubuntu 22.04 ou 24.04 LTS.
+
+Exemples de prix constates le 16 aout 2026 :
+
+- OVHcloud VPS-1 : environ 4,57 EUR TTC/mois, 2 vCore, 4 Go RAM, 40 Go NVMe ;
+- Hetzner CX23 : environ 5,49 EUR HT/mois hors IPv4, 2 vCPU, 4 Go RAM ;
+- Scaleway Development Instance : prix tres bas possible, mais verifier les limites CPU/RAM dans la console.
+
+Pour ce projet, le choix recommande low-cost est :
+
+```text
+OVHcloud VPS-1 ou Hetzner CX23
+```
+
+4 Go RAM peut suffire pour une demo, mais Chronos sur CPU peut etre lent. Si le serveur manque de memoire, passer a 8 Go RAM.
+
+### Fichiers ajoutes pour le VPS
+
+- `Dockerfile` : construit l'image Python du projet ;
+- `docker-compose.vps.yml` : lance PostgreSQL, FastAPI et Streamlit sur le VPS ;
+- `.dockerignore` : evite d'envoyer `.env`, les logs et les caches dans l'image Docker.
+
+### 1. Creer le VPS
+
+Dans le fournisseur choisi :
+
+1. Creer un VPS Ubuntu LTS.
+2. Ajouter votre cle SSH si possible.
+3. Noter l'adresse IP publique du serveur.
+
+Dans les exemples suivants, remplacer :
+
+```text
+VOTRE_IP_VPS
+```
+
+par l'adresse IP reelle.
+
+### 2. Se connecter au serveur
+
+Depuis PowerShell :
+
+```powershell
+ssh root@VOTRE_IP_VPS
+```
+
+### 3. Mettre a jour Ubuntu
+
+Sur le VPS :
+
+```bash
+apt update
+apt upgrade -y
+```
+
+### 4. Creer un utilisateur non-root
+
+Remplacer `energy` par le nom voulu si necessaire :
+
+```bash
+adduser energy
+usermod -aG sudo energy
+```
+
+Se reconnecter avec cet utilisateur :
+
+```bash
+exit
+ssh energy@VOTRE_IP_VPS
+```
+
+### 5. Installer Docker et Git
+
+Sur le VPS :
+
+```bash
+sudo apt update
+sudo apt install -y ca-certificates curl git
+```
+
+Installer Docker avec le script officiel :
+
+```bash
+curl -fsSL https://get.docker.com | sudo sh
+```
+
+Autoriser l'utilisateur courant a utiliser Docker :
+
+```bash
+sudo usermod -aG docker $USER
+```
+
+Se deconnecter puis se reconnecter :
+
+```bash
+exit
+ssh energy@VOTRE_IP_VPS
+```
+
+Verifier Docker :
+
+```bash
+docker --version
+docker compose version
+```
+
+### 6. Recuperer le projet depuis GitHub
+
+Sur le VPS :
+
+```bash
+git clone https://github.com/maelann44/Energy_Forecast_project_full_stack.git
+cd Energy_Forecast_project_full_stack
+```
+
+Si le depot est prive, GitHub demandera une authentification avec token.
+
+### 7. Creer le fichier `.env` sur le VPS
+
+Ne jamais envoyer `.env` sur GitHub. Le creer directement sur le serveur :
+
+```bash
+nano .env
+```
+
+Exemple :
+
+```env
+POSTGRES_DB=trading_data
+POSTGRES_USER=dev_user
+POSTGRES_PASSWORD=remplacer_par_un_mot_de_passe_solide
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
+
+RTE_CLIENT_ID=remplacer_par_votre_client_id
+RTE_CLIENT_SECRET=remplacer_par_votre_client_secret
+
+CHRONOS_MODEL_NAME=amazon/chronos-t5-small
+CHRONOS_DEVICE_MAP=cpu
+PREDICTION_API_URL=http://fastapi:8000/predict
+```
+
+### 8. Lancer l'application sur le VPS
+
+Construire et demarrer les conteneurs :
+
+```bash
+docker compose -f docker-compose.vps.yml up -d --build
+```
+
+Verifier :
+
+```bash
+docker compose -f docker-compose.vps.yml ps
+```
+
+Lire les logs :
+
+```bash
+docker compose -f docker-compose.vps.yml logs -f fastapi
+```
+
+Dans un autre terminal :
+
+```bash
+docker compose -f docker-compose.vps.yml logs -f streamlit
+```
+
+### 9. Acceder a l'application
+
+Dashboard Streamlit :
+
+```text
+http://VOTRE_IP_VPS:8501
+```
+
+API FastAPI :
+
+```text
+http://VOTRE_IP_VPS:8000/docs
+```
+
+Health check :
+
+```text
+http://VOTRE_IP_VPS:8000/health
+```
+
+### 10. Charger des donnees dans PostgreSQL sur le VPS
+
+Option rapide : copier le CSV local sur le VPS puis charger les donnees 2024.
+
+Depuis PowerShell local, dans le dossier du projet :
+
+```powershell
+scp consumption_data_avg_hourly.csv energy@VOTRE_IP_VPS:/home/energy/Energy_Forecast_project_full_stack/
+```
+
+Sur le VPS :
+
+```bash
+docker cp consumption_data_avg_hourly.csv energy_postgres:/tmp/consumption_data_avg_hourly.csv
+docker cp database/load_2024_historical_from_csv.sql energy_postgres:/tmp/load_2024_historical_from_csv.sql
+docker exec energy_postgres psql -U dev_user -d trading_data -f /tmp/load_2024_historical_from_csv.sql
+```
+
+Verifier :
+
+```bash
+docker exec energy_postgres psql -U dev_user -d trading_data -c "SELECT COUNT(*), MIN(timestamp), MAX(timestamp) FROM historical_data;"
+```
+
+### 11. Tester une prediction sur le VPS
+
+Verifier que FastAPI est actif :
+
+```bash
+curl http://localhost:8000/health
+```
+
+Lancer le batch de prediction sans insertion :
+
+```bash
+docker compose -f docker-compose.vps.yml run --rm worker python scripts/run_prediction_batch.py --api-url http://fastapi:8000/predict --context-length 168 --prediction-length 24 --dry-run
+```
+
+Insertion reelle :
+
+```bash
+docker compose -f docker-compose.vps.yml run --rm worker python scripts/run_prediction_batch.py --api-url http://fastapi:8000/predict --context-length 168 --prediction-length 24
+```
+
+Verifier la table `predictions` :
+
+```bash
+docker exec energy_postgres psql -U dev_user -d trading_data -c "SELECT COUNT(*), MIN(timestamp), MAX(timestamp) FROM predictions;"
+```
+
+### 12. Lancer une ingestion RTE sur le VPS
+
+Test sans insertion :
+
+```bash
+docker compose -f docker-compose.vps.yml run --rm worker python scripts/ingest_rte_consumption.py --hours 24 --dry-run
+```
+
+Insertion reelle :
+
+```bash
+docker compose -f docker-compose.vps.yml run --rm worker python scripts/ingest_rte_consumption.py --hours 24
+```
+
+### 13. Cron plus tard
+
+Le cron n'est pas obligatoire pour tester. Quand vous voudrez l'activer :
+
+```bash
+crontab -e
+```
+
+Exemple ingestion quotidienne a 23h30 :
+
+```cron
+30 23 * * * cd /home/energy/Energy_Forecast_project_full_stack && docker compose -f docker-compose.vps.yml run --rm worker python scripts/ingest_rte_consumption.py --hours 24 >> logs/cron_ingestion.log 2>&1
+```
+
+Exemple prediction quotidienne a 00h15 :
+
+```cron
+15 0 * * * cd /home/energy/Energy_Forecast_project_full_stack && docker compose -f docker-compose.vps.yml run --rm worker python scripts/run_prediction_batch.py --api-url http://fastapi:8000/predict --context-length 168 --prediction-length 24 >> logs/cron_prediction.log 2>&1
+```
+
+### 14. Redemarrer et mettre a jour
+
+Apres une modification poussee sur GitHub :
+
+```bash
+git pull
+docker compose -f docker-compose.vps.yml up -d --build
+```
+
+Redemarrer un service :
+
+```bash
+docker compose -f docker-compose.vps.yml restart streamlit
+docker compose -f docker-compose.vps.yml restart fastapi
+```
+
+Arreter l'application sans supprimer les donnees :
+
+```bash
+docker compose -f docker-compose.vps.yml down
+```
+
+Ne pas utiliser cette commande sauf si vous voulez supprimer PostgreSQL :
+
+```bash
+docker compose -f docker-compose.vps.yml down -v
+```
+
+### 15. Securite minimale
+
+Pour une demo low-cost sans nom de domaine, l'application sera accessible avec l'IP et les ports `8501` et `8000`.
+
+Pour une version plus propre :
+
+- acheter ou utiliser un nom de domaine ;
+- installer Caddy ou Nginx comme reverse proxy ;
+- activer HTTPS avec Let's Encrypt ;
+- ne pas exposer FastAPI publiquement si seul Streamlit doit l'appeler ;
+- mettre un mot de passe devant Streamlit ou limiter l'acces par firewall.

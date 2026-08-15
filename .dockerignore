@@ -1,0 +1,10 @@
+.git
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+logs/
+*.dump
+api/__pycache__/
+dashboard/__pycache__/
