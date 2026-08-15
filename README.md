@@ -1,4 +1,4 @@
-# Forecast de consommation electrique - infrastructure base de donnees
+# Energy Forecast Project Full Stack
 
 Ce projet vise a prevoir la consommation d'electricite en France, puis a afficher les resultats dans un dashboard Streamlit pour le trading de l'electricite.
 
