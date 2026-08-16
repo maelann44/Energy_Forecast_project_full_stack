@@ -1,5 +1,6 @@
 import os
 from contextlib import asynccontextmanager
+import math
 from pathlib import Path
 from typing import Any
 
@@ -45,8 +46,8 @@ class PredictRequest(BaseModel):
     @field_validator("context")
     @classmethod
     def context_values_must_be_valid(cls, values: list[float]) -> list[float]:
-        if any(value < 0 for value in values):
-            raise ValueError("Les valeurs de consommation doivent etre positives.")
+        if any(not math.isfinite(value) for value in values):
+            raise ValueError("Les valeurs du contexte doivent etre finies.")
         return values
 
     @field_validator("quantiles")
