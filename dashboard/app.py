@@ -15,6 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(PROJECT_ROOT / ".env")
 
 DEFAULT_FASTAPI_URL = os.getenv("PREDICTION_API_URL", "http://localhost:8000/predict")
+ADMIN_PASSWORD = os.getenv("DASHBOARD_ADMIN_PASSWORD")
 
 
 st.set_page_config(
@@ -215,7 +216,15 @@ def render_header() -> None:
     st.caption("Donnees historiques RTE, predictions Chronos et stockage PostgreSQL.")
 
 
-def render_sidebar(status: dict) -> tuple[datetime, datetime, str, int, int]:
+def is_admin_unlocked() -> bool:
+    if not ADMIN_PASSWORD:
+        return False
+
+    password = st.sidebar.text_input("Mot de passe admin", type="password")
+    return password == ADMIN_PASSWORD
+
+
+def render_sidebar(status: dict) -> tuple[datetime, datetime, str, int, int, bool]:
     st.sidebar.header("Filtres")
 
     first_ts = status.get("first_historical_timestamp")
@@ -238,8 +247,9 @@ def render_sidebar(status: dict) -> tuple[datetime, datetime, str, int, int]:
     api_url = st.sidebar.text_input("URL FastAPI", value=DEFAULT_FASTAPI_URL)
     context_length = st.sidebar.number_input("Contexte historique (heures)", 24, 720, 168, step=24)
     prediction_length = st.sidebar.number_input("Horizon (heures)", 1, 168, 24, step=1)
+    admin_unlocked = is_admin_unlocked()
 
-    return start_at, end_at, api_url, int(context_length), int(prediction_length)
+    return start_at, end_at, api_url, int(context_length), int(prediction_length), admin_unlocked
 
 
 def render_metrics(status: dict, historical_df: pd.DataFrame, predictions_df: pd.DataFrame) -> None:
@@ -256,8 +266,24 @@ def render_metrics(status: dict, historical_df: pd.DataFrame, predictions_df: pd
         col4.metric("Derniere prediction", str(last_prediction_date)[:19])
 
 
-def render_prediction_action(api_url: str, context_length: int, prediction_length: int) -> None:
+def render_prediction_action(
+    api_url: str,
+    context_length: int,
+    prediction_length: int,
+    admin_unlocked: bool,
+) -> None:
     st.subheader("Generer une prediction")
+
+    if not ADMIN_PASSWORD:
+        st.warning(
+            "Action desactivee: definir DASHBOARD_ADMIN_PASSWORD dans .env pour autoriser "
+            "la generation manuelle de predictions."
+        )
+        return
+
+    if not admin_unlocked:
+        st.info("Mode lecture seule. Entrez le mot de passe admin dans la barre laterale pour generer une prediction.")
+        return
 
     left, right = st.columns([1, 3])
     with left:
@@ -296,7 +322,7 @@ def main() -> None:
         st.error(f"Impossible de se connecter a PostgreSQL: {exc}")
         st.stop()
 
-    start_at, end_at, api_url, context_length, prediction_length = render_sidebar(status)
+    start_at, end_at, api_url, context_length, prediction_length, admin_unlocked = render_sidebar(status)
 
     historical_df = load_historical_data(start_at, end_at)
     predictions_df = load_predictions(start_at, end_at)
@@ -306,7 +332,7 @@ def main() -> None:
     fig = build_forecast_figure(historical_df, predictions_df)
     st.plotly_chart(fig, use_container_width=True)
 
-    render_prediction_action(api_url, context_length, prediction_length)
+    render_prediction_action(api_url, context_length, prediction_length, admin_unlocked)
 
     tab_real, tab_predictions, tab_combined = st.tabs(
         ["Historique", "Predictions", "Vue combinee"]

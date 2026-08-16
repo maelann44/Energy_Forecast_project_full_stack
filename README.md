@@ -630,6 +630,7 @@ RTE_CLIENT_SECRET=remplacer_par_votre_client_secret
 CHRONOS_MODEL_NAME=amazon/chronos-t5-small
 CHRONOS_DEVICE_MAP=cpu
 PREDICTION_API_URL=http://fastapi:8000/predict
+DASHBOARD_ADMIN_PASSWORD=remplacer_par_un_mot_de_passe_admin
 ```
 
 ### 8. Lancer l'application sur le VPS
@@ -669,14 +670,16 @@ http://VOTRE_IP_VPS:8501
 API FastAPI :
 
 ```text
-http://VOTRE_IP_VPS:8000/docs
+non exposee publiquement sur le VPS
 ```
 
 Health check :
 
-```text
-http://VOTRE_IP_VPS:8000/health
+```bash
+docker compose -f docker-compose.vps.yml exec fastapi python -c "import requests; print(requests.get('http://localhost:8000/health').json())"
 ```
+
+FastAPI reste accessible uniquement entre conteneurs Docker. C'est volontaire : cela evite qu'un utilisateur externe appelle `/predict` en boucle.
 
 ### 10. Charger des donnees dans PostgreSQL sur le VPS
 
@@ -801,3 +804,67 @@ Pour une version plus propre :
 - activer HTTPS avec Let's Encrypt ;
 - ne pas exposer FastAPI publiquement si seul Streamlit doit l'appeler ;
 - mettre un mot de passe devant Streamlit ou limiter l'acces par firewall.
+
+### 16. Protection contre les appels de forecast abusifs
+
+En production, ne pas laisser tout le monde lancer le modele Chronos.
+
+Protections appliquees dans ce projet :
+
+- FastAPI n'est pas exposee publiquement dans `docker-compose.vps.yml` ;
+- seul Streamlit expose le port `8501` ;
+- le bouton `Generer et stocker` est protege par `DASHBOARD_ADMIN_PASSWORD` ;
+- si `DASHBOARD_ADMIN_PASSWORD` n'est pas defini, la generation manuelle est desactivee ;
+- la table `predictions` a une contrainte anti-doublon sur `(timestamp, model_name, horizon)`.
+
+Sur le VPS, verifier que le port FastAPI n'est pas publie :
+
+```bash
+docker compose -f docker-compose.vps.yml ps
+```
+
+Vous devez voir `8501` expose pour Streamlit, mais pas `8000` expose publiquement pour FastAPI.
+
+### 17. Mettre a jour le VPS apres une modification locale
+
+Sur le PC local :
+
+```powershell
+git status
+git add README.md docker-compose.vps.yml dashboard/app.py .env.example
+git commit -m "Secure VPS deployment and dashboard forecast action"
+git push
+```
+
+Sur le VPS :
+
+```bash
+cd ~/Energy_Forecast_project_full_stack
+git pull
+docker compose -f docker-compose.vps.yml up -d --build
+```
+
+Verifier les services :
+
+```bash
+docker compose -f docker-compose.vps.yml ps
+```
+
+Lire les logs si besoin :
+
+```bash
+docker compose -f docker-compose.vps.yml logs -f streamlit
+docker compose -f docker-compose.vps.yml logs -f fastapi
+```
+
+Si vous devez modifier le mot de passe admin sur le VPS :
+
+```bash
+nano .env
+```
+
+Puis redemarrer Streamlit :
+
+```bash
+docker compose -f docker-compose.vps.yml restart streamlit
+```

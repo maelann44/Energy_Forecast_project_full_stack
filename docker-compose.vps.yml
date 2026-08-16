@@ -28,8 +28,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     volumes:
       - ./logs:/app/logs
     command: ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
@@ -42,6 +42,7 @@ services:
     environment:
       POSTGRES_HOST: postgres
       PREDICTION_API_URL: http://fastapi:8000/predict
+      DASHBOARD_ADMIN_PASSWORD: ${DASHBOARD_ADMIN_PASSWORD}
     depends_on:
       postgres:
         condition: service_healthy
